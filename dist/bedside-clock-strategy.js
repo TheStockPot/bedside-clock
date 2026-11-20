@@ -7,7 +7,7 @@
  * reachable at /<dashboard>/setup afterwards.
  */
 
-const VERSION = "0.2.0";
+const VERSION = "0.2.2";
 const STRATEGY_TYPE = "custom:bedside-clock";
 
 /* ------------------------------------------------------------------ */
@@ -65,6 +65,7 @@ const DEFAULT_CONFIG = {
   background_opacity: 0, // 0 = automatic (dimmed more for light images); otherwise the image opacity in % (lower = darker)
   palette_override: {}, // colours the user changed from the automatically picked palette: { accent, accent2, track, ink, text } (#RRGGBB)
   show_labels: true,
+  time_format: "auto", // the clock: "auto" (follows the Home Assistant user's profile), "12" or "24"
   page_order: [], // the order of the pages in the navbar, the wizard and when swiping; pages missing from it follow in the default order
   dashboard_path: "",
   kiosk_satellite: { enabled: false, device: "", entity: "" }, // Kiosk Satellite app: Calendar, Cameras and Timer can use its built-in views (device: its device id; entity: an entity of it, from older setups)
@@ -146,6 +147,26 @@ function merge(base, over) {
   return out;
 }
 
+export const TIME_FORMATS = [
+  ["auto", "Automatic (from your Home Assistant profile)"],
+  ["12", "12-hour (9:05)"],
+  ["24", "24-hour (21:05)"]
+];
+
+export function uses12Hour(cfg, hass) {
+  if (cfg.time_format === "12") return true;
+  if (cfg.time_format === "24") return false;
+  const loc = hass && hass.locale;
+  if (loc && loc.time_format === "12") return true;
+  if (loc && loc.time_format === "24") return false;
+  try {
+    const lang = loc && loc.time_format === "language" ? loc.language : undefined;
+    return !!new Intl.DateTimeFormat(lang, { hour: "numeric" }).resolvedOptions().hour12;
+  } catch (e) {
+    return false;
+  }
+}
+
 export const HOME_LAYOUTS = ["clock", "controls", "controls3", "controls4"]; // the kinds of home screen
 
 export function normaliseConfig(raw) {
@@ -154,6 +175,8 @@ export function normaliseConfig(raw) {
   const cfg = merge(JSON.parse(JSON.stringify(DEFAULT_CONFIG)), JSON.parse(JSON.stringify(raw || {})));
   if (!DEVICES[cfg.device]) cfg.device = "echo_show_5";
   if (!BACKGROUNDS[cfg.background]) cfg.background = "earth";
+  if (!TIME_FORMATS.some(([v]) => v === String(cfg.time_format))) cfg.time_format = "auto";
+  cfg.time_format = String(cfg.time_format);
   // the home screens: older configs have one (layout + quick_buttons). Each layout appears once; layout and quick_buttons mirror the first screen.
   const h = cfg.pages.home;
   const seen = new Set();
@@ -474,14 +497,14 @@ function backgroundFor(cfg) {
 const scaleN = (n) => Math.round(n * 1000) / 1000;
 const scaleCss = (v, k) => String(v).replace(/\d*\.?\d+/, (n) => String(Math.round(parseFloat(n) * k * 1000) / 1000));
 
-function homeClockStack(cfg, dev, { vh = false, left = false } = {}) {
+function homeClockStack(cfg, dev, hass, { vh = false, left = false } = {}) {
   const clockStack = [
     {
       type: "custom:digital-clock",
       padding: vh ? "0" : dev.clock.padding, // beside the tiles the clock is centred by the grid, so no top offset
       background: "transparent",
       additionalCSS: "border:none;box-shadow:none",
-      firstLineFormat: "H:mm",
+      firstLineFormat: uses12Hour(cfg, hass) ? "h:mm" : "H:mm", // no AM/PM: it would make the big clock too wide
       secondLineFormat: "cccc d LLLL",
       firstLineLayout: { textAlign: left ? "left" : "center", lineHeight: vh ? "1em" : dev.clock.lineHeight, fontSize: vh ? "24vh" : dev.clock.size, fontWeight: "normal" },
       secondLineLayout: { textAlign: left ? "left" : "center", lineHeight: vh ? "1.5em" : dev.clock.dateLineHeight, fontSize: vh ? "5vh" : dev.clock.dateSize, fontWeight: "normal" },
@@ -947,7 +970,7 @@ function homeBlocksView(cfg, base, missing, hass, count) {
   const blocks = addWeather ? [...tiles.slice(0, 1), weatherBlock(weatherEntity, rows, cfg.palette, BLOCK_RADIUS), ...tiles.slice(1)] : tiles;
   const hasWeather = blocks.some((t) => t.type === "weather-forecast");
   const clockCfg = hasWeather ? { ...cfg, pages: { ...cfg.pages, home: { ...cfg.pages.home, weather: "" } } } : cfg;
-  const clockCards = homeClockStack(clockCfg, dev, { vh: true });
+  const clockCards = homeClockStack(clockCfg, dev, hass, { vh: true });
   clockCards[0].firstLineLayout.fontSize = "19vh";
   const clock = { type: "vertical-stack", cards: clockCards, card_mod: { style: ":host { --stack-card-gap: 8px; }\n" } };
   const pair = (list) => (list.length > 1 ? { type: "grid", columns: 2, square: false, cards: list.map((t) => narrowOf.get(t) || t), card_mod: gap } : list[0]);
@@ -998,7 +1021,7 @@ function homeControlsView(cfg, base, missing, hass, count) {
 function homeView(cfg, base, missing, hass) {
   if (CARD_COUNTS[cfg.pages.home.layout]) return homeControlsView(cfg, base, missing, hass, CARD_COUNTS[cfg.pages.home.layout]);
   const dev = DEVICES[cfg.device];
-  const clockStack = homeClockStack(cfg, dev);
+  const clockStack = homeClockStack(cfg, dev, hass);
   const firstGrid = [{ type: "vertical-stack", cards: clockStack }];
   if (missing.length) firstGrid.unshift(missingCard(missing));
 
@@ -1704,6 +1727,7 @@ const LABELS = {
   light_entity: "Light toggle (optional)",
   hide: "Hide the navbar and swipe left or right between pages instead",
   weather: "Weather entity (optional)",
+  time_format: "Clock",
   camera: "Nursery camera",
   entity: "Entity",
   title: "Title (optional)",
@@ -2239,6 +2263,11 @@ class BedsideClockEditor extends HTMLElement {
     this._el("p", "note", "Choose one or more home screens. Each one is a page of its own: the first is Home, the others are Home 2, Home 3 and so on, in the order you chose them.", body);
     const w = this._el("div", "", undefined, body);
     w.style.marginTop = "16px";
+    const clockBox = this._el("div", "", undefined, w);
+    clockBox.style.marginBottom = "16px";
+    this._form(clockBox, [{ name: "time_format", selector: { select: { mode: "dropdown", options: TIME_FORMATS.map(([value, label]) => ({ value, label })) } } }], this._config, (v) =>
+      this._change((c) => (c.time_format = v.time_format || "auto"))
+    );
     this._form(w, [{ name: "weather", selector: { entity: { domain: "weather" } } }], h, (v) =>
       this._change((c) => (c.pages.home.weather = v.weather || ""))
     );
