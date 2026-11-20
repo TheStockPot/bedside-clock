@@ -7,7 +7,7 @@
  * reachable at /<dashboard>/setup afterwards.
  */
 
-const VERSION = "0.2.0";
+const VERSION = "0.2.1";
 const STRATEGY_TYPE = "custom:bedside-clock";
 
 /* ------------------------------------------------------------------ */
@@ -103,18 +103,34 @@ export function pageOrder(cfg) {
   return [...saved, ...known.filter((k) => !saved.includes(k))];
 }
 
+// `repo` is the card's Marketplace (HACS) repository, used for the install links in the missing-cards notice.
+// `check` tells apart cards that register the same element: the original Digital Clock (wassy92x) is also
+// `digital-clock`, but it ignores the font size, padding and background options the clock relies on.
 const DEPENDENCIES = [
-  { element: "digital-clock", name: "Digital Clock Card", pages: ["home"] },
-  { element: "mushroom-empty-card", name: "Mushroom", pages: ["home"] },
-  { element: "mushroom-chips-card", name: "Mushroom", pages: ["home"] },
-  { element: "navbar-card", name: "Navbar Card", pages: ["home", "baby", "cameras", "climate", "weather", "calendar", "timer", "shopping"] },
-  { element: "simple-timer-card", name: "Simple Timer Card", pages: ["timer"] },
-  { element: "bubble-card", name: "Bubble Card", pages: ["home4", "climate"] },
-  { element: "mini-graph-card", name: "Mini Graph Card", pages: ["homegraph"] },
-  { element: "card-mod", name: "card-mod", pages: ["home", "weather", "calendar", "timer", "shopping"] },
-  { element: "calendar-card-pro", name: "Calendar Card Pro", pages: ["calendar"] },
-  { element: "advanced-camera-card", name: "Advanced Camera Card", pages: ["baby", "cameras"] },
+  { element: "digital-clock", name: "Advanced Digital Clock", repo: "sierramike/lovelace-advanced-digital-clock", pages: ["home"],
+    check: (el) => typeof el.getStubConfig === "function", wrong: "the original Digital Clock card is installed instead; remove it" },
+  { element: "mushroom-empty-card", name: "Mushroom", repo: "piitaya/lovelace-mushroom", pages: ["home"] },
+  { element: "mushroom-chips-card", name: "Mushroom", repo: "piitaya/lovelace-mushroom", pages: ["home"] },
+  { element: "navbar-card", name: "Navbar Card", repo: "joseluis9595/lovelace-navbar-card", pages: ["home", "baby", "cameras", "climate", "weather", "calendar", "timer", "shopping"] },
+  { element: "simple-timer-card", name: "Simple Timer Card", repo: "eyalgal/simple-timer-card", pages: ["timer"] },
+  { element: "bubble-card", name: "Bubble Card", repo: "Clooos/Bubble-Card", pages: ["home4", "climate"] },
+  { element: "mini-graph-card", name: "Mini Graph Card", repo: "kalkih/mini-graph-card", pages: ["homegraph"] },
+  { element: "card-mod", name: "card-mod", repo: "thomasloven/lovelace-card-mod", pages: ["home", "weather", "calendar", "timer", "shopping"] },
+  { element: "calendar-card-pro", name: "Calendar Card Pro", repo: "alexpfau/calendar-card-pro", pages: ["calendar"] },
+  { element: "advanced-camera-card", name: "Advanced Camera Card", repo: "dermotduffy/advanced-camera-card", pages: ["baby", "cameras"] },
 ];
+
+// A My Home Assistant link that opens the card's page in the user's own Marketplace (HACS), ready to download.
+export const marketplaceLink = (repo) => {
+  const [owner, repository] = repo.split("/");
+  return `https://my.home-assistant.io/redirect/hacs_repository/?owner=${owner}&repository=${repository}&category=plugin`;
+};
+
+// Installed and usable: registered, and (when a card shares its element with a look-alike) the right card.
+const installed = (d, registry) => {
+  const el = registry.get(d.element);
+  return !!el && (!d.check || d.check(el));
+};
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                              */
@@ -242,7 +258,7 @@ export function missingDependencies(cfg, registry = customElements) {
   if (cfg.pages.home.enabled && screens.some((s) => s.layout in CARD_COUNTS)) enabled.push("home4");
   // a sensor or number shown as a graph among the controls of the block layouts needs the Mini Graph Card
   if (cfg.pages.home.enabled && screens.some((s) => s.layout in CARD_COUNTS && (s.quick_buttons || []).some((b) => displayOf(b, cfg.device, s.layout) === "graph" && !hasShortcut(cfg, b)))) enabled.push("homegraph");
-  return DEPENDENCIES.filter((d) => d.pages.some((p) => enabled.includes(p)) && !registry.get(d.element) && !(d.element === "navbar-card" && cfg.navbar && cfg.navbar.hide));
+  return DEPENDENCIES.filter((d) => d.pages.some((p) => enabled.includes(p)) && !installed(d, registry) && !(d.element === "navbar-card" && cfg.navbar && cfg.navbar.hide));
 }
 
 function dashboardBase(cfg) {
@@ -1022,10 +1038,16 @@ function homeView(cfg, base, missing, hass) {
 }
 
 function missingCard(missing) {
-  const names = [...new Set(missing.map((m) => m.name))];
+  const seen = new Set();
+  const lines = missing.filter((m) => !seen.has(m.name) && seen.add(m.name)).map((m) => {
+    const wrong = m.wrong && typeof customElements !== "undefined" && customElements.get(m.element) ? ` (${m.wrong})` : "";
+    return `- [${m.name}](${marketplaceLink(m.repo)})${wrong}`;
+  });
   return {
     type: "markdown",
-    content: "**The Stock Pot's Echo Dashboard is missing required cards:** " + names.join(", ") + ". Install them via the Marketplace (HACS), then reload.",
+    content:
+      "**The Stock Pot's Echo Dashboard is missing required cards.** Open each one in your Marketplace (HACS), download it, then reload:\n\n" +
+      lines.join("\n"),
   };
 }
 
@@ -1790,6 +1812,10 @@ const EDITOR_CSS = `
   .bc .dep { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--divider-color); gap: 12px; }
   .bc .dep:last-child { border-bottom: none; }
   .bc .dep .n { font-weight: 500; } .bc .dep .d { font-size: 12px; color: var(--secondary-text-color); }
+  .bc .dep .status { display: flex; align-items: center; gap: 8px; flex: none; }
+  .bc .chip.get { display: inline-flex; align-items: center; gap: 4px; text-decoration: none; background: color-mix(in srgb, var(--info-color, #039be5) 20%, transparent); color: var(--info-color, #039be5); }
+  .bc .chip.get:hover { background: color-mix(in srgb, var(--info-color, #039be5) 32%, transparent); }
+  .bc .chip.get svg { width: 14px; height: 14px; }
   .bc .chip { font-size: 12px; padding: 4px 10px; border-radius: 12px; white-space: nowrap; }
   .bc .chip.ok { background: color-mix(in srgb, var(--success-color, #43a047) 20%, transparent); color: var(--success-color, #43a047); }
   .bc .chip.bad { background: color-mix(in srgb, var(--error-color, #db4437) 20%, transparent); color: var(--error-color, #db4437); }
@@ -2055,20 +2081,32 @@ class BedsideClockEditor extends HTMLElement {
   _step_deps(body) {
     const groups = new Map();
     for (const d of DEPENDENCIES) {
-      const g = groups.get(d.name) || { name: d.name, elements: [], pages: new Set() };
-      g.elements.push(d.element);
+      const g = groups.get(d.name) || { name: d.name, repo: d.repo, deps: [], pages: new Set() };
+      g.deps.push(d);
       d.pages.forEach((p) => g.pages.add(p));
       groups.set(d.name, g);
     }
     let missing = 0;
     for (const g of groups.values()) {
-      const installed = g.elements.every((e) => customElements.get(e));
-      if (!installed) missing++;
+      const ok = g.deps.every((d) => installed(d, customElements));
+      const wrong = g.deps.find((d) => d.wrong && customElements.get(d.element) && !installed(d, customElements));
+      if (!ok) missing++;
       const row = this._el("div", "dep", undefined, body);
       const left = this._el("div", "", undefined, row);
       this._el("div", "n", g.name, left);
       this._el("div", "d", "Used by: " + [...g.pages].map((p) => (PAGE_INFO[p] ? PAGE_INFO[p].title : "Home tiles")).join(", "), left);
-      this._el("span", "chip " + (installed ? "ok" : "bad"), installed ? "Installed" : "Not installed", row);
+      if (wrong) this._el("div", "d", wrong.wrong.charAt(0).toUpperCase() + wrong.wrong.slice(1) + ".", left);
+      const right = this._el("div", "status", undefined, row);
+      if (!ok && g.repo) {
+        const a = this._el("a", "chip get", "Marketplace", right);
+        a.href = marketplaceLink(g.repo);
+        a.target = "_blank";
+        a.rel = "noreferrer";
+        a.title = "Open " + g.name + " in the Marketplace";
+        // mdi:open-in-new, inline so it shows without waiting for ha-icon
+        a.insertAdjacentHTML("beforeend", '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M14,3V5H17.59L7.76,14.83L9.17,16.24L19,6.41V10H21V3M19,19H5V5H12V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V12H19V19Z"/></svg>');
+      }
+      this._el("span", "chip " + (ok ? "ok" : "bad"), ok ? "Installed" : wrong ? "Wrong card" : "Not installed", right);
     }
 
     const kiosk = this._el("div", "dep", undefined, body);
@@ -2081,7 +2119,7 @@ class BedsideClockEditor extends HTMLElement {
       "p",
       "note",
       missing
-        ? `${missing} missing. In the Marketplace, search each name and install it, then reload this page. You can continue and install later.`
+        ? `${missing} missing. Open each one in the Marketplace and download it, then reload this page. You can continue and install later.`
         : "Everything you need is installed.",
       body
     );

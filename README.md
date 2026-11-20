@@ -58,11 +58,13 @@ strategy:
    Reopen it any time at `/<your-dashboard>/setup`.
 
 ## Required cards (install via the Marketplace; only those for the pages you enable are needed)
-- Navbar Card (all pages) and card-mod (most pages)
-- Home: Mushroom, Digital Clock Card, plus Bubble Card and Mini Graph Card for the card layouts
-- Baby monitor / Cameras: Advanced Camera Card
-- Timer: Simple Timer Card
-- Calendar: Calendar Card Pro
+Each link opens the card in your own Home Assistant's Marketplace (HACS) through My Home Assistant.
+
+- [Navbar Card](https://my.home-assistant.io/redirect/hacs_repository/?owner=joseluis9595&repository=lovelace-navbar-card&category=plugin) (all pages) and [card-mod](https://my.home-assistant.io/redirect/hacs_repository/?owner=thomasloven&repository=lovelace-card-mod&category=plugin) (most pages)
+- Home: [Mushroom](https://my.home-assistant.io/redirect/hacs_repository/?owner=piitaya&repository=lovelace-mushroom&category=plugin), [Advanced Digital Clock](https://my.home-assistant.io/redirect/hacs_repository/?owner=sierramike&repository=lovelace-advanced-digital-clock&category=plugin) (**not** the original Digital Clock card: it uses the same name but ignores the clock's size and styling), plus [Bubble Card](https://my.home-assistant.io/redirect/hacs_repository/?owner=Clooos&repository=Bubble-Card&category=plugin) and [Mini Graph Card](https://my.home-assistant.io/redirect/hacs_repository/?owner=kalkih&repository=mini-graph-card&category=plugin) for the card layouts
+- Baby monitor / Cameras: [Advanced Camera Card](https://my.home-assistant.io/redirect/hacs_repository/?owner=dermotduffy&repository=advanced-camera-card&category=plugin)
+- Timer: [Simple Timer Card](https://my.home-assistant.io/redirect/hacs_repository/?owner=eyalgal&repository=simple-timer-card&category=plugin)
+- Calendar: [Calendar Card Pro](https://my.home-assistant.io/redirect/hacs_repository/?owner=alexpfau&repository=calendar-card-pro&category=plugin)
 - Optional: kiosk-mode (hides the Home Assistant header, on small screens like the Echo only) and hass-swipe-navigation (swipe between pages)
 
 The wizard's first step lists what is installed and what is missing.
