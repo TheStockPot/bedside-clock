@@ -75,7 +75,7 @@ const DEFAULT_CONFIG = {
     home: { enabled: true, weather: "", layout: "clock", quick_buttons: [], screens: [] }, // screens: the home screens, each { layout, quick_buttons }; the first is "Home" (layout and quick_buttons mirror it)
     baby: { enabled: false, camera: "" },
     cameras: { enabled: false, cameras: [], source: "dashboard", ks_entity: "", layout: "swipe" }, // layout: "swipe" | "grid" (grid: all cameras in 2 columns, Echo Show 8 only) // source: "dashboard" | "kiosk_satellite" (ks_entity: its "Show <view>" button)
-    climate: { enabled: false, entity: "" },
+    climate: { enabled: false, entity: "", full_screen: false, living_room_entity: "" },
     weather: { enabled: false, entity: "" },
     calendar: { enabled: false, entities: [], source: "dashboard", ks_entity: "", ks_view: "Week" }, // ks_entity: its "Calendar view" select; ks_view: Day, Week, Month or Schedule
     timer: { enabled: false, source: "dashboard", entity: "", presets: [1, 5, 10, 15], auto_discover_google: true, auto_voice_pe: true },
@@ -281,7 +281,9 @@ export function missingDependencies(cfg, registry = customElements) {
   if (cfg.pages.home.enabled && screens.some((s) => s.layout in CARD_COUNTS)) enabled.push("home4");
   // a sensor or number shown as a graph among the controls of the block layouts needs the Mini Graph Card
   if (cfg.pages.home.enabled && screens.some((s) => s.layout in CARD_COUNTS && (s.quick_buttons || []).some((b) => displayOf(b, cfg.device, s.layout) === "graph" && !hasShortcut(cfg, b)))) enabled.push("homegraph");
-  return DEPENDENCIES.filter((d) => d.pages.some((p) => enabled.includes(p)) && !installed(d, registry) && !(d.element === "navbar-card" && cfg.navbar && cfg.navbar.hide));
+  const missing = DEPENDENCIES.filter((d) => d.pages.some((p) => enabled.includes(p)) && !installed(d, registry) && !(d.element === "navbar-card" && cfg.navbar && cfg.navbar.hide));
+  if (cfg.pages.climate.enabled && cfg.pages.climate.full_screen && !registry.get("ecosee-card")) missing.push({ name: "Ecosee Card", element: "ecosee-card", repo: "razzamatazm/ecosee", pages: ["climate"] });
+  return missing;
 }
 
 function dashboardBase(cfg) {
@@ -331,8 +333,11 @@ function buildNavbar(cfg, base, { autoPadding = true } = {}) {
       continue;
     }
     const route = { icon: key === "home" && cfg.pages.home.screens?.[0]?.icon ? cfg.pages.home.screens[0].icon : meta.icon, label: cfg.show_labels ? meta.label : "", url: `/${base}/${meta.path}` };
-    // Climate is a pop-up on the current page, not a page of its own
-    if (key === "climate") { route.url = CLIMATE_HASH; tail.push(route); continue; }
+    // Climate stays a pop-up by default; the opt-in landscape view is a normal page.
+    if (key === "climate") {
+      if (cfg.pages.climate.full_screen) route.url = `/${base}/${meta.path}`;
+      else { route.url = CLIMATE_HASH; tail.push(route); continue; }
+    }
     pages.push(route);
     // more home screens each get a button after Home
     if (key === "home") for (let i = 1; i < (cfg.pages.home.screens || []).length; i++) pages.push({ icon: cfg.pages.home.screens[i].icon || "mdi:home-outline", label: cfg.show_labels ? `Home ${i + 1}` : "", url: `/${base}/home-${i + 1}` });
@@ -1204,6 +1209,38 @@ function climatePopup(cfg, hass) {
   return small ? climatePopupSmall(cfg, hass) : climatePopupLarge(cfg, hass);
 }
 
+// Two linked strategy-generated views reuse Ecosee's own climate state and control UI.
+function climateLandscapeViews(cfg, base) {
+  const climate = cfg.pages.climate;
+  const rooms = [
+    { entity: climate.living_room_entity, name: "Living Room", path: "zones-living-room" },
+    { entity: climate.entity, name: "Second Floor", path: "zones" },
+  ].filter((room) => room.entity);
+  const view = (selected) => ({
+    title: "Climate",
+    path: selected.path,
+    type: "panel",
+    cards: [{
+      type: "vertical-stack",
+      cards: [
+        { type: "horizontal-stack", cards: rooms.map((room) => ({
+          type: "button",
+          name: room.name,
+          icon: "mdi:thermostat",
+          show_state: false,
+          tap_action: room.path === selected.path ? { action: "none" } : { action: "navigate", navigation_path: `/${base}/${room.path}` },
+          card_mod: { style: room.path === selected.path
+            ? "ha-card { background: var(--primary-color); color: var(--text-primary-color, white); border-radius: 18px; height: 58px; }"
+            : "ha-card { background: var(--secondary-background-color); border-radius: 18px; height: 58px; }" },
+        })) },
+        { type: "custom:ecosee-card", entity: selected.entity, name: selected.name, landscape: true },
+        buildNavbar(cfg, base),
+      ],
+    }],
+  });
+  return rooms.map(view);
+}
+
 // Echo Show 8: Home Assistant's own thermostat card (temperature dial, fan dropdown and mode buttons) in a Bubble Card pop-up.
 function climatePopupLarge(cfg, hass) {
   const entity = cfg.pages.climate.entity;
@@ -1693,7 +1730,11 @@ export function generateDashboard(rawConfig, hass, missingOverride, palette) {
 
   const noNavbar = !!cfg.navbar.hide;
   // The climate pop-up is opened from the navbar, so without a navbar it is not added (add the thermostat as a Home control).
-  if (p.climate.enabled && p.climate.entity && !noNavbar) {
+  if (p.climate.enabled && p.climate.entity && p.climate.full_screen) {
+    const setup = result.views.pop();
+    result.views.push(...climateLandscapeViews(cfg, base));
+    result.views.push(setup);
+  } else if (p.climate.enabled && p.climate.entity && !noNavbar) {
     for (const v of result.views) if (v.path !== "setup") attachClimatePopup(v, climatePopup(cfg, hass));
   }
   if (noNavbar) {
@@ -1765,7 +1806,7 @@ const PAGE_INFO = {
   home: { title: "Home", icon: "mdi:home", desc: "Clock and date, optionally with cards for your lights, sensors and more." },
   baby: { title: "Baby monitor", icon: "mdi:baby-carriage", desc: "Full-screen live view of one camera." },
   cameras: { title: "Cameras", icon: "mdi:cctv", desc: "Swipe between several cameras." },
-  climate: { title: "Climate", icon: "mdi:fan", desc: "Pop-up with temperature, mode and fan controls, opened from the fan icon in the navbar." },
+  climate: { title: "Climate", icon: "mdi:fan", desc: "Thermostat pop-up by default, or an optional dedicated landscape Climate page." },
   weather: { title: "Weather", icon: "mdi:weather-partly-cloudy", desc: "Full-screen forecast." },
   calendar: { title: "Calendar", icon: "mdi:calendar", desc: "The next few days of events, with a countdown to the current one." },
   timer: { title: "Timer", icon: "mdi:timer-outline", desc: "Kitchen timers, including quick start timers" },
@@ -1781,7 +1822,7 @@ const STEP_INFO = {
   home: ["Home page", "Choose the layout of the clock screen."],
   baby: ["Baby monitor page", "Choose the camera to show."],
   cameras: ["Cameras page", "Add the cameras you want to swipe between."],
-  climate: ["Climate pop-up", "Pick the climate entity. The fan icon in the navbar opens a pop-up with temperature, mode and fan controls."],
+  climate: ["Climate", "Choose the Second Floor thermostat, optional Living Room thermostat, and whether to use the dedicated landscape view."],
   weather: ["Weather page", "Pick the weather entity to show."],
   calendar: ["Calendar page", "Choose the calendars to show."],
   timer: ["Timer page", "Voice timers and quick-start buttons."],
@@ -1981,6 +2022,7 @@ class BedsideClockEditor extends HTMLElement {
     if (id === "baby" && !c.pages.baby.camera) return "Choose a camera.";
     if (id === "cameras" && !c.pages.cameras.cameras.some((x) => x.entity)) return "Add at least one camera.";
     if (id === "climate" && !c.pages.climate.entity) return "Choose your climate entity.";
+    if (id === "climate" && c.pages.climate.full_screen && c.navbar.hide) return "The full-screen Climate page needs the navbar so the thermostat icon remains available.";
     if (id === "weather" && !(c.pages.weather.entity || c.pages.home.weather)) return "Choose a weather entity.";
     if (id === "calendar" && !c.pages.calendar.entities.some((x) => (typeof x === "string" ? x : x.entity))) return "Add at least one calendar.";
     if (id === "shopping" && !c.pages.shopping.entity) return "Choose a list.";
@@ -2477,12 +2519,22 @@ class BedsideClockEditor extends HTMLElement {
   _step_climate(body) {
     this._form(
       body,
-      [{ name: "entity", label: "Climate entity (air conditioner / thermostat)", selector: { entity: { domain: "climate" } } }],
+      [
+        { name: "entity", label: "Second Floor thermostat", selector: { entity: { domain: "climate" } } },
+        { name: "living_room_entity", label: "Living Room thermostat (optional)", selector: { entity: { domain: "climate" } } },
+      ],
       this._config.pages.climate,
-      (v) => this._change((c) => (c.pages.climate.entity = v.entity || ""))
+      (v) => this._change((c) => {
+        c.pages.climate.entity = v.entity || "";
+        c.pages.climate.living_room_entity = v.living_room_entity || "";
+      })
     );
+    this._form(body, [{ name: "full_screen", label: "Dedicated landscape Climate page", selector: { boolean: {} } }], this._config.pages.climate,
+      (v) => this._change((c) => (c.pages.climate.full_screen = !!v.full_screen)));
     this._el("p", "note", "Shows Home Assistant's thermostat card with a fan-mode dropdown and mode buttons.", body);
-    this._el("p", "note", "The pop-up is opened from the navbar, so it only works with the navbar shown. It is not available if you hide the navbar.", body);
+    this._el("p", "note", this._config.pages.climate.full_screen
+      ? "The dedicated view uses Ecosee Card in landscape mode. The thermostat popup remains the default when this option is off."
+      : "The fan icon in the navbar opens the existing thermostat popup. Turn on the dedicated landscape page to use Ecosee instead.", body);
   }
 
   _step_weather(body) {

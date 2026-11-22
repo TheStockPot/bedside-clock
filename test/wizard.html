@@ -85,7 +85,7 @@ qa(".dot")[0].click(); ok("dot jump back", q("h2").textContent==="Before you sta
   e._step=e._steps().indexOf("timer"); e._render(); [...e.querySelectorAll(".tile")][1].click();
   ok("Timer: built-in needs no entity and explains it", e._config.pages.timer.source==="kiosk_satellite" && e.textContent.includes("ks://timers") && e.querySelectorAll("ha-form").length===0 && e._validate("timer")==="");
   e._step=e._steps().indexOf("climate"); e._config.pages.climate.enabled=true; e._step=e._steps().indexOf("climate"); e._render();
-  ok("Climate step says the pop-up only works with the navbar", e.textContent.includes("only works with the navbar")); }
+  ok("Climate step exposes the full-screen option and preserves the popup as its default", [...e.querySelectorAll("ha-form")].some(f=>f.schema.some(x=>x.name==="full_screen")) && e._config.pages.climate.full_screen===false && e.textContent.includes("popup")); }
 { const hs={states:{"select.t8_camera_view":{state:"Closed",attributes:{}},"button.t8_show_temp":{state:"unknown",attributes:{friendly_name:"T8 Show TEMP"}},"button.t8_show_garden":{state:"unknown",attributes:{friendly_name:"T8 Show Garden"}},"button.t8_show_music_library":{state:"unknown",attributes:{friendly_name:"T8 Show Music Library"}},"button.t8_close_camera_view":{state:"unknown",attributes:{}}}, callWS: async()=>({})};
   const e=document.createElement("bedside-clock-setup-card"); e.hass=hs; document.getElementById("host").appendChild(e);
   e.setConfig({type:"custom:bedside-clock-setup-card"}); e._config.pages.cameras.enabled=true; e._config.kiosk_satellite={enabled:true,entity:"select.t8_camera_view"};
