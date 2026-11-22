@@ -11,7 +11,9 @@ displays. No integration needed: it works like the Energy dashboard, with a buil
   or its current value, your choice). With cards, the
   weather block sits alongside them.
 
-For Home screens with cards, the setup wizard can enable **vertical, bottom-to-top sliders** for Bubble Card slider controls. This changes the touch/drag axis as well as the fill direction; on touchscreens, swiping over a vertical slider card operates its slider instead of scrolling the page. It is off by default, so existing dashboards keep their horizontal sliders.
+For Home screens with cards, the setup wizard can enable **vertical, bottom-to-top sliders** for Bubble Card slider controls. This changes the touch/drag axis as well as the fill direction; the slider cards also claim the gesture
+(`touch-action: none`), so on touchscreens an upward drag over a vertical slider card operates its slider instead of
+scrolling the page. It is off by default, so existing dashboards keep their horizontal sliders.
 - **Baby monitor** - full-screen live camera.
 - **Cameras** - swipe between several cameras (on the Echo Show 8 you can show them all in a 2 column grid instead).
 - **Climate** - a thermostat pop-up opened from the fan icon in the navbar.

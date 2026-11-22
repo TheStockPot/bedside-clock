@@ -599,10 +599,11 @@ const panelBg = (pal) => `rgba(${darkenFor(pal.track, pal.text, 0.65).join(", ")
 const solidBg = (pal, hex, min = 4.5) => rgbHex(darkenFor(hex, pal.text, 1, min));
 const TILE_RADIUS = "999px"; // pill-shaped tiles
 const vhs = (n, ts = 1) => Math.round(n * ts * 100) / 100 + "vh"; // a font size in vh, enlarged by the device's text scale
-const tileStyles = (pal = DEFAULT_PALETTE, radius = TILE_RADIUS, block = false, ts = 1) => [
+const tileStyles = (pal = DEFAULT_PALETTE, radius = TILE_RADIUS, block = false, ts = 1, vertical = false) => [
   `.bubble-button-container { background-color: ${panelBg(pal)} !important; }`,
   `.bubble-range-fill { background-color: ${solidBg(pal, pal.accent, 3)} !important; opacity: ${TILE_OPACITY} !important; filter: brightness(0.9); }`,
   `ha-card, .bubble-button-container, .bubble-background, .bubble-range-slider { border-radius: ${radius} !important; overflow: hidden; }`,
+  ...(vertical ? ["ha-card, .bubble-button-container, .slider-container, .bubble-range-slider { touch-action: none !important; }"] : []),
   ...(block === "narrow"
     ? [
         // narrow block (two share a quadrant): the icon in the top left corner, the name at the bottom left on up to two lines
@@ -854,7 +855,7 @@ function tileFor(b, hass, pal = DEFAULT_PALETTE, { radius = TILE_RADIUS, rows = 
   const attrs = hass?.states?.[e]?.attributes || {};
   const feat = Number(attrs.supported_features) || 0;
   const more = { action: "more-info" };
-  const tile = { type: "custom:bubble-card", entity: e, card_layout: "large", rows, hold_action: more, styles: tileStyles(pal, radius, block, textScale) };
+  const tile = { type: "custom:bubble-card", entity: e, card_layout: "large", rows, hold_action: more, styles: tileStyles(pal, radius, block, textScale, verticalSliders) };
   if (b.name) tile.name = b.name;
   if (b.icon) tile.icon = b.icon;
   const button = (button_type, tap, extra) => ({ ...tile, card_type: "button", button_type, ...(button_type === "slider" && verticalSliders ? { slider_fill_orientation: "bottom" } : {}), show_name: !!block, show_state: false, tap_action: tap, ...extra });
