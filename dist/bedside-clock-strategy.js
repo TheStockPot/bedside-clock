@@ -72,7 +72,7 @@ const DEFAULT_CONFIG = {
   kiosk: { hide_header: true, header_users: "" }, // hide the Home Assistant header (kiosk-mode), only on screens as narrow as an Echo
   navbar: { light_entity: "", hide: false, shortcuts: [] }, // hide: no navbar, swipe between pages instead (needs hass-swipe-navigation); shortcuts: buttons that open a Kiosk Satellite view, { view, shortcut_view, name, icon }
   pages: {
-    home: { enabled: true, weather: "", layout: "clock", quick_buttons: [], screens: [] }, // screens: the home screens, each { layout, quick_buttons }; the first is "Home" (layout and quick_buttons mirror it)
+    home: { enabled: true, weather: "", layout: "clock", quick_buttons: [], screens: [], vertical_sliders: false }, // screens: the home screens, each { layout, quick_buttons }; the first is "Home" (layout and quick_buttons mirror it)
     baby: { enabled: false, camera: "" },
     cameras: { enabled: false, cameras: [], source: "dashboard", ks_entity: "", layout: "swipe" }, // layout: "swipe" | "grid" (grid: all cameras in 2 columns, Echo Show 8 only) // source: "dashboard" | "kiosk_satellite" (ks_entity: its "Show <view>" button)
     climate: { enabled: false, entity: "" },
@@ -848,7 +848,7 @@ export function quickTileFor(b, hass, pal = DEFAULT_PALETTE, opts = {}) {
   return b.tap_override ? viewButton(b, hass, pal, opts) : tileFor(b, hass, pal, opts);
 }
 
-function tileFor(b, hass, pal = DEFAULT_PALETTE, { radius = TILE_RADIUS, rows = 2, block = false, viewH = 602, textScale = 1, device = "", layout = "", rowVh = BLOCK_ROW, gapVh = BLOCK_GAP } = {}) {
+function tileFor(b, hass, pal = DEFAULT_PALETTE, { radius = TILE_RADIUS, rows = 2, block = false, viewH = 602, textScale = 1, device = "", layout = "", rowVh = BLOCK_ROW, gapVh = BLOCK_GAP, verticalSliders = false } = {}) {
   const e = b.entity;
   const domain = e.split(".")[0];
   const attrs = hass?.states?.[e]?.attributes || {};
@@ -857,7 +857,7 @@ function tileFor(b, hass, pal = DEFAULT_PALETTE, { radius = TILE_RADIUS, rows = 
   const tile = { type: "custom:bubble-card", entity: e, card_layout: "large", rows, hold_action: more, styles: tileStyles(pal, radius, block, textScale) };
   if (b.name) tile.name = b.name;
   if (b.icon) tile.icon = b.icon;
-  const button = (button_type, tap, extra) => ({ ...tile, card_type: "button", button_type, show_name: !!block, show_state: false, tap_action: tap, ...extra });
+  const button = (button_type, tap, extra) => ({ ...tile, card_type: "button", button_type, ...(button_type === "slider" && verticalSliders ? { slider_fill_orientation: "bottom" } : {}), show_name: !!block, show_state: false, tap_action: tap, ...extra });
   const toggle = { action: "toggle" };
   const run = (service) => ({ action: "perform-action", perform_action: service, target: { entity_id: e } });
 
@@ -979,9 +979,9 @@ function homeBlocksView(cfg, base, missing, hass, count) {
   // every block is 4 rows tall (one quadrant). There are at least two blocks: one control and the weather block.
   const rows = 4;
   const rowVh = blockRowVh(!!cfg.navbar.hide);
-  const tiles = quickButtonList(cfg, limit, hass, () => ({ radius: BLOCK_RADIUS, rows, block: true, viewH: dev.viewH, textScale: dev.textScale, device: cfg.device, layout: cfg.pages.home.layout, rowVh, gapVh }), buttons);
+  const tiles = quickButtonList(cfg, limit, hass, () => ({ radius: BLOCK_RADIUS, rows, block: true, viewH: dev.viewH, textScale: dev.textScale, device: cfg.device, layout: cfg.pages.home.layout, rowVh, gapVh, verticalSliders: cfg.pages.home.vertical_sliders }), buttons);
   // two blocks sharing a quadrant are narrow: the name goes to the bottom left, on up to two lines
-  const narrowTiles = quickButtonList(cfg, limit, hass, () => ({ radius: BLOCK_RADIUS, rows, block: "narrow", viewH: dev.viewH, textScale: dev.textScale, device: cfg.device, layout: cfg.pages.home.layout, rowVh, gapVh }), buttons);
+  const narrowTiles = quickButtonList(cfg, limit, hass, () => ({ radius: BLOCK_RADIUS, rows, block: "narrow", viewH: dev.viewH, textScale: dev.textScale, device: cfg.device, layout: cfg.pages.home.layout, rowVh, gapVh, verticalSliders: cfg.pages.home.vertical_sliders }), buttons);
   const narrowOf = new Map(tiles.map((t, i) => [t, narrowTiles[i]]));
   const blocks = addWeather ? [...tiles.slice(0, 1), weatherBlock(weatherEntity, rows, cfg.palette, BLOCK_RADIUS), ...tiles.slice(1)] : tiles;
   const hasWeather = blocks.some((t) => t.type === "weather-forecast");
@@ -1750,6 +1750,7 @@ const LABELS = {
   hide: "Hide the navbar and swipe left or right between pages instead",
   weather: "Weather entity (optional)",
   time_format: "Clock",
+  vertical_sliders: "Use vertical, bottom-to-top sliders",
   camera: "Nursery camera",
   entity: "Entity",
   title: "Title (optional)",
@@ -2309,6 +2310,12 @@ class BedsideClockEditor extends HTMLElement {
     this._form(w, [{ name: "weather", selector: { entity: { domain: "weather" } } }], h, (v) =>
       this._change((c) => (c.pages.home.weather = v.weather || ""))
     );
+    if (screens.some((screen) => screen.layout in CARD_COUNTS)) {
+      this._form(w, [{ name: "vertical_sliders", selector: { boolean: {} } }], h, (v) =>
+        this._change((c) => (c.pages.home.vertical_sliders = !!v.vertical_sliders))
+      );
+      this._el("p", "note", "Bubble Card sliders can move vertically from bottom to top. On touchscreens, swiping anywhere on a vertical slider card operates the slider rather than scrolling the page.", body);
+    }
     this._el("p", "note", screens.some((x) => x.layout in CARD_COUNTS) ? "With cards a weather card is always shown; leave this blank to use the first weather entity Home Assistant has." : "Weather is optional. Leave blank for a clock only.", body);
     screens.forEach((screen, n) => {
       // every home screen has its own section: the icon of its navbar button, and its cards

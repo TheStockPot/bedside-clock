@@ -262,5 +262,6 @@ qa(".dot")[0].click(); ok("dot jump back", q("h2").textContent==="Before you sta
   iconForms()[1].dispatchEvent(new CustomEvent("value-changed",{detail:{value:{icon:"mdi:bed"}}}));
   iconForms()[0].dispatchEvent(new CustomEvent("value-changed",{detail:{value:{icon:"mdi:sofa"}}}));
   ok("Each screen's icon is saved on that screen", e._config.pages.home.screens[1].icon==="mdi:bed" && e._config.pages.home.screens[0].icon==="mdi:sofa"); }
+{ const e=document.createElement("bedside-clock-setup-card"); e.hass={states:{},callWS:async()=>({})}; document.getElementById("host").appendChild(e); e.setConfig({type:"custom:bedside-clock-setup-card"}); e._config.pages.home.layout="controls4"; e._step=e._steps().indexOf("home"); e._render(); const f=[...e.querySelectorAll("ha-form")].find(x=>x.schema.some(y=>y.name==="vertical_sliders")); ok("Home wizard exposes vertical sliders for card layouts and saves the option", !!f && f.schema.find(x=>x.name==="vertical_sliders").selector.boolean !== undefined && f.data.vertical_sliders===false && e.textContent.includes("swiping anywhere") && (f.dispatchEvent(new CustomEvent("value-changed",{detail:{value:{...f.data,vertical_sliders:true}}})), e._config.pages.home.vertical_sliders===true)); }
 document.getElementById("out").textContent=res.join("\n");
 </script>
