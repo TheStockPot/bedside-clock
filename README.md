@@ -6,7 +6,7 @@ A configurable Home Assistant dashboard strategy for **Echo Show 5** and **Echo 
 displays. No integration needed: it works like the Energy dashboard, with a built-in setup wizard.
 
 ## Pages (turn on the ones you want)
-- **Home** - large clock and date. The clock follows the 12/24-hour setting in your Home Assistant profile, or you can set 12-hour or 24-hour in the wizard. Choose Clock only, or Clock + 2, 3 or 4 Cards, or several of them: each one becomes its own home screen (Home, Home 2, ...) with its own cards. Cards can control devices
+- **Home** - large clock and date. The clock follows the 12/24-hour setting in your Home Assistant profile, or you can set 12-hour or 24-hour in the wizard. The date likewise follows your profile's date format, or you can put the month first (Saturday November 21) or last (Saturday 21 November). Choose Clock only, or Clock + 2, 3 or 4 Cards, or several of them: each one becomes its own home screen (Home, Home 2, ...) with its own cards. Cards can control devices
   (lights, fans, covers, media players, scenes, thermostats...) or show data (a sensor or number can show a graph
   or its current value, your choice). With cards, the
   weather block sits alongside them.
