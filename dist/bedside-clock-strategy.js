@@ -7,7 +7,7 @@
  * reachable at /<dashboard>/setup afterwards.
  */
 
-const VERSION = "0.2.2";
+const VERSION = "0.2.3";
 const STRATEGY_TYPE = "custom:bedside-clock";
 
 /* ------------------------------------------------------------------ */
@@ -1593,8 +1593,12 @@ function setupView() {
 /* Strategy                                                             */
 /* ------------------------------------------------------------------ */
 
-// Some cards (e.g. Advanced Camera Card) define their element lazily, after the dashboard is generated.
-async function settleMissing(cfg, timeoutMs = 4000) {
+// Home Assistant starts loading the dashboard resources (the cards) and asks the strategy for the dashboard without waiting for
+// them, so a card that is installed can still be loading. Large cards (Mushroom, Advanced Camera Card and its many chunks) can take
+// several seconds on an Echo with an empty cache. Wait a while for the missing ones; any that arrive later are picked up by
+// shouldRegenerate below.
+const SETTLE_TIMEOUT_MS = 10000;
+async function settleMissing(cfg, timeoutMs = SETTLE_TIMEOUT_MS) {
   const missing = missingDependencies(cfg);
   if (!missing.length) return missing;
   const timeout = new Promise((r) => setTimeout(r, timeoutMs));
@@ -1723,10 +1727,24 @@ export function generateDashboard(rawConfig, hass, missingOverride, palette) {
   return result;
 }
 
+// Home Assistant asks after every update whether to build the dashboard again. Its default answer is "when the entity, device,
+// area or floor registry changed", which is kept; the dashboard is also built again when a card the last build reported missing
+// has finished loading since, so the missing-cards notice goes away without a refresh.
+const REGISTRIES = ["entities", "devices", "areas", "floors"];
+export const needsRegenerate = (lastMissing, oldHass, newHass, registry = customElements) =>
+  REGISTRIES.some((k) => (oldHass && oldHass[k]) !== (newHass && newHass[k])) || lastMissing.some((d) => installed(d, registry));
+
+let lastMissing = []; // the cards the last generated dashboard reported missing
+
 class BedsideClockStrategy extends HTMLElement {
   static async generate(config, hass) {
     const cfg = normaliseConfig(config);
-    return generateDashboard(config, hass, cfg.configured ? await settleMissing(cfg) : [], cfg.configured ? await resolvePalette(cfg) : undefined);
+    const missing = cfg.configured ? await settleMissing(cfg) : [];
+    lastMissing = missing;
+    return generateDashboard(config, hass, missing, cfg.configured ? await resolvePalette(cfg) : undefined);
+  }
+  static shouldRegenerate(config, oldHass, newHass) {
+    return needsRegenerate(lastMissing, oldHass, newHass);
   }
   static async getConfigElement() {
     return document.createElement("bedside-clock-editor");
@@ -2102,7 +2120,21 @@ class BedsideClockEditor extends HTMLElement {
 
   /* ---- steps ---- */
 
+  // A card can still be loading when the wizard opens (Home Assistant loads the cards without waiting for them). Draw the step
+  // again once a missing one registers, so it does not stay "Not installed" until Re-check or a refresh.
+  _watchMissing(deps) {
+    this._watching = this._watching || new Set();
+    for (const d of deps) {
+      if (this._watching.has(d.element)) continue;
+      this._watching.add(d.element);
+      customElements.whenDefined(d.element).then(() => {
+        if (this.isConnected && ["deps", "review"].includes(this._steps()[this._step])) this._render();
+      });
+    }
+  }
+
   _step_deps(body) {
+    this._watchMissing(DEPENDENCIES.filter((d) => !installed(d, customElements)));
     const groups = new Map();
     for (const d of DEPENDENCIES) {
       const g = groups.get(d.name) || { name: d.name, repo: d.repo, deps: [], pages: new Set() };
@@ -2629,6 +2661,7 @@ class BedsideClockEditor extends HTMLElement {
       if (problem) this._button(body, `${STEP_INFO[id][0]}: ${problem}`, () => { this._error = ""; this._step = idx; this._render(); }, "btn small fix");
     });
     const missing = missingDependencies(c);
+    this._watchMissing(missing);
     if (missing.length) {
       this._el("p", "err", "Still missing: " + [...new Set(missing.map((m) => m.name))].join(", ") + ".", body);
     }
