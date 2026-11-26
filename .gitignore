@@ -12,3 +12,7 @@ node_modules/
 # Local demo build, backups of the maintainer's dashboards (personal details)
 /demo/
 test/gen8.html
+
+# pi-portrait build by-product
+pi-portrait/pi-portrait-dashboard.json
+*.local.md
