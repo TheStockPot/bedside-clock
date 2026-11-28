@@ -18,6 +18,7 @@ const DEVICES = {
   echo_show_5: {
     label: "Echo Show 5 Gen 1 or 2 (788 x 394 viewport)",
     maxButtons: 5, // icons that fit in the side navbar
+    sensorGraphsOnly: true, // only a sensor can be a graph: a number is always shown as its value
     viewH: 394, // viewport height in px (sizes that must be in px, such as the graph, scale with it)
     maxBlocks: 5, // blocks (controls + the weather block) on the Home with quick controls: the weather block and up to four controls
     textScale: 1.25, // the names on the control tiles are enlarged on this small screen
@@ -42,6 +43,22 @@ const DEVICES = {
     navbar: { icon: 36, button: 68, gap: 8 }, // px: larger icons and buttons than the navbar's defaults (28 / 60 / 10)
     clock: { size: "11em", lineHeight: "1em", dateSize: "2.6em", dateLineHeight: "1.6em", padding: "22vh 0 0" }, // top padding centres the clock block vertically
     chip: { height: "50px", font: ".5em", icon: ".75em", padding: "0.625em", radius: "31px" }, // same as the Show 5: the chip keeps its size
+  },
+  // Xiaomi Mi Smart Clock (X04G) at Android density 168: 800 x 480 physical is 762 x 457 CSS px. Checked on a real X04G running LineageOS 20.
+  mi_smart_clock: {
+    label: "Xiaomi Mi Smart Clock (800 x 480, 762 x 457 viewport)",
+    maxButtons: 5,
+    sensorGraphsOnly: true,
+    viewH: 457,
+    maxBlocks: 5,
+    textScale: 1.1, // between the two Echos: the columns are narrower for their height than on the Show 5
+    aspect: "5:3",
+    forecastDays: 4,
+    pad: 1,
+    navGap: 0,
+    desktopMinWidth: 700, // Navbar Card moves to the bottom below 768px by default, and this screen is 762px wide
+    clock: { size: "9.5em", lineHeight: "1em", dateSize: "2.2em", dateLineHeight: "1.6em", padding: "17vh 0 0" },
+    chip: { height: "50px", font: ".5em", icon: ".75em", padding: "0.625em", radius: "31px" },
   },
 };
 
@@ -144,7 +161,7 @@ const GRAPHABLE = ["sensor", "number", "input_number"];
 // With four cards there is no room for a graph (it needs a quadrant of its own, like the weather block), so every card shows its value.
 export const canChooseDisplay = (b, device, layout) => {
   const domain = String((b && b.entity) || "").split(".")[0];
-  return GRAPHABLE.includes(domain) && !(device === "echo_show_5" && domain !== "sensor") && layout !== "controls4";
+  return GRAPHABLE.includes(domain) && !(DEVICES[device]?.sensorGraphsOnly && domain !== "sensor") && layout !== "controls4";
 };
 export const displayOf = (b, device, layout) => {
   const domain = String((b && b.entity) || "").split(".")[0];
@@ -358,6 +375,7 @@ function buildNavbar(cfg, base, { autoPadding = true } = {}) {
     mobile: { mode: "floating" },
   };
   card.desktop = { position: "right", mode: "floating" };
+  if (DEVICES[cfg.device].desktopMinWidth) card.desktop.min_width = DEVICES[cfg.device].desktopMinWidth;
   const nb = DEVICES[cfg.device].navbar;
   {
     card.styles = [
@@ -1744,7 +1762,7 @@ const LABELS = {
   background_opacity: "Image brightness % (0 = automatic; lower is darker)",
   show_labels: "Show text labels under navbar icons",
   dashboard_path: "Dashboard URL path (leave blank to auto-detect)",
-  hide_header: "Hide the Home Assistant header on the Echo",
+  hide_header: "Hide the Home Assistant header on small screens",
   header_users: "Users who still see the header (comma separated)",
   light_entity: "Light toggle (optional)",
   hide: "Hide the navbar and swipe left or right between pages instead",
@@ -2557,7 +2575,7 @@ class BedsideClockEditor extends HTMLElement {
       })
     );
     if (n.hide) {
-      this._el("p", "note", "Swiping between pages needs the hass-swipe-navigation card from the Marketplace. If you use Kiosk Satellite on your Echo, you can enable swipe navigation there instead. The climate pop-up, the light shortcut and Kiosk Satellite shortcuts live in the navbar, so add the thermostat and light as Home cards instead.", body);
+      this._el("p", "note", "Swiping between pages needs the hass-swipe-navigation card from the Marketplace. If you use Kiosk Satellite on your device, you can enable swipe navigation there instead. The climate pop-up, the light shortcut and Kiosk Satellite shortcuts live in the navbar, so add the thermostat and light as Home cards instead.", body);
       return;
     }
     const light = this._el("div", "", undefined, body);
@@ -2606,7 +2624,7 @@ class BedsideClockEditor extends HTMLElement {
       k,
       (v) => this._change((c) => Object.assign(c.kiosk, v), v.hide_header !== k.hide_header)
     );
-    this._el("p", "note", "The header is only hidden on small screens like the Echo (a window narrower than 1000px), so it still shows when you open the dashboard on a desktop. Hiding it needs the kiosk-mode card from the Marketplace. If you use Kiosk Satellite on your Echo, you can hide the Home Assistant header there instead, and you can leave this off.", body);
+    this._el("p", "note", "The header is only hidden on small screens like a smart display (a window narrower than 1000px), so it still shows when you open the dashboard on a desktop. Hiding it needs the kiosk-mode card from the Marketplace. If you use Kiosk Satellite on your device, you can hide the Home Assistant header there instead, and you can leave this off.", body);
   }
 
   _step_review(body) {
@@ -2620,7 +2638,7 @@ class BedsideClockEditor extends HTMLElement {
     row("Background", BACKGROUNDS[c.background].label);
     row("Kiosk Satellite", c.kiosk_satellite.enabled ? "Yes" + (KS_PAGES.filter((k) => ksChosen(c, k)).length ? " (built-in: " + KS_PAGES.filter((k) => ksChosen(c, k)).map((k) => PAGE_INFO[k].title).join(", ") + ")" : "") : "No");
     row("Pages", pageOrder(c).filter((k) => c.pages[k].enabled).map((k) => PAGE_INFO[k].title).join(", "));
-    row("Hide header", c.kiosk.hide_header ? "Yes (on the Echo only)" : "No");
+    row("Hide header", c.kiosk.hide_header ? "Yes (on small screens only)" : "No");
     row("Navbar", c.navbar.hide ? "Hidden (swipe between pages)" : [c.navbar.light_entity && "Light shortcut", c.kiosk_satellite.enabled && (c.navbar.shortcuts || []).length && `${c.navbar.shortcuts.length} Kiosk Satellite shortcut${c.navbar.shortcuts.length > 1 ? "s" : ""}`].filter(Boolean).join(", ") || "Shown");
     // steps left incomplete (possible now that steps can be visited in any order), each one a button that goes to it
     const steps = this._steps();

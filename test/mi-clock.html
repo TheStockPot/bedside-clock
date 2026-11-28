@@ -1,0 +1,120 @@
+<!doctype html><meta charset="utf-8"><title>Mi Smart Clock tests</title><body><div id="host" hidden></div><pre id="out">running</pre><div id="stage"></div>
+<script>window.addEventListener("error", e => { document.getElementById("out").textContent = "ERROR " + e.message + " (line " + e.lineno + ")"; });</script>
+<script type="module">
+// Mi Smart Clock device tests. Cards are simple stand-ins sized from the generated config: real Home Assistant cards are not loaded.
+import { generateDashboard, normaliseConfig, canChooseDisplay, displayOf } from "../dist/bedside-clock-strategy.js";
+
+const out = document.getElementById("out");
+const res = []; const ok = (n, c, extra = "") => res.push((c ? "PASS " : "FAIL ") + n + (!c && extra ? " -> " + extra : ""));
+const hass = { states: {
+  "weather.home": { state: "partlycloudy", attributes: { friendly_name: "Home", temperature: 22 } },
+  "climate.bedroom": { state: "cool", attributes: { friendly_name: "Bedroom AC", hvac_modes: ["off", "cool", "heat", "fan_only"], fan_modes: ["Auto", "Low", "High"], min_temp: 16, max_temp: 30, target_temp_step: 0.5 } },
+  "light.bedroom": { state: "on", attributes: { friendly_name: "Bedroom light" } },
+  "switch.fan": { state: "off", attributes: { friendly_name: "Fan" } },
+  "sensor.temp": { state: "21.5", attributes: { friendly_name: "Temperature", unit_of_measurement: "°C" } },
+  "number.volume": { state: "4", attributes: { friendly_name: "Volume", min: 0, max: 10, step: 1 } },
+} };
+const cards = [{ entity: "light.bedroom" }, { entity: "switch.fan" }, { entity: "sensor.temp" }, { entity: "number.volume" }];
+const allPages = { baby: { enabled: true, camera: "camera.a" }, cameras: { enabled: true, cameras: [{ entity: "camera.a", title: "A" }, { entity: "camera.b", title: "B" }] }, climate: { enabled: true, entity: "climate.bedroom" }, weather: { enabled: true, entity: "weather.home" }, calendar: { enabled: true, entities: ["calendar.home"] }, timer: { enabled: true }, shopping: { enabled: true, entity: "todo.shopping" } };
+const config = (device, layout = "clock", extra = {}) => ({ configured: true, device, background: "earth", time_format: "24", navbar: { light_entity: "light.bedroom", ...(extra.navbar || {}) }, pages: { home: { enabled: true, weather: "weather.home", layout, quick_buttons: layout === "clock" ? [] : cards.slice(0, { controls: 2, controls3: 3, controls4: 4 }[layout]) }, ...(extra.pages || {}) } });
+
+// ---- Selecting the device in the wizard ----
+const wizard = () => { const e = document.createElement("bedside-clock-setup-card"); e.hass = { ...hass, callWS: async () => ({}) }; document.getElementById("host").appendChild(e); e.setConfig({ type: "custom:bedside-clock-setup-card" }); e._step = e._steps().indexOf("device"); e._render(); return e; };
+{
+  const e = wizard(); const tiles = [...e.querySelectorAll(".tile")]; const titles = tiles.map((t) => t.querySelector(".t").textContent);
+  ok("wizard: Echo Show 5 and 8 keep their places and Mi Smart Clock is third", titles.length === 3 && titles[0].startsWith("Echo Show 5") && titles[1].startsWith("Echo Show 8") && titles[2] === "Xiaomi Mi Smart Clock", titles.join());
+  ok("wizard: the tile shows the screen and viewport", tiles[2].querySelector(".d").textContent === "800 x 480, 762 x 457 viewport");
+  tiles[2].click();
+  ok("wizard: choosing the tile saves mi_smart_clock", e._config.device === "mi_smart_clock");
+  e._step = e._steps().indexOf("review"); e._render();
+  ok("wizard: the review names the device", e.textContent.includes("Xiaomi Mi Smart Clock"));
+  e._step = e._steps().indexOf("navbar"); e._render();
+  ok("wizard: the navbar step renders (it borrows the Show 5 picture)", e.querySelectorAll("img.shot").length === 2);
+  e._config.navbar.hide = true; e._config.kiosk.hide_header = true;
+  const echoIn = ["navbar", "kiosk", "review"].filter((s) => { e._step = e._steps().indexOf(s); e._render(); return /\bEcho\b/.test(e.textContent + JSON.stringify([...e.querySelectorAll("ha-form")].map((f) => f.computeLabel ? (f.schema || []).map(f.computeLabel) : []))); });
+  ok("wizard: the navbar, header and review steps do not call this device an Echo", !echoIn.length, echoIn.join());
+}
+
+// ---- Generated config ----
+const nav = (n) => { if (Array.isArray(n)) { for (const i of n) { const r = nav(i); if (r) return r; } return null; } if (n && typeof n === "object") { if (n.type === "custom:navbar-card") return n; return nav(Object.values(n)); } return null; };
+const find = (n, t, a = []) => { if (Array.isArray(n)) n.forEach((i) => find(i, t, a)); else if (n && typeof n === "object") { if (n.type === t) a.push(n); Object.values(n).forEach((v) => find(v, t, a)); } return a; };
+{
+  const n = normaliseConfig({ configured: true, device: "mi_smart_clock" });
+  ok("config: the device survives normaliseConfig", n.device === "mi_smart_clock");
+  ok("config: the default Home is clock only", n.pages.home.layout === "clock" && n.pages.home.screens.length === 1 && n.pages.home.screens[0].layout === "clock");
+  const light = generateDashboard({ configured: true, device: "mi_smart_clock" }, hass, []);
+  ok("config: the default has only Home and setup views", light.views.map((v) => v.path).join() === "home,setup", light.views.map((v) => v.path).join());
+  ok("config: the default Home uses no Bubble, graph or weather cards", !/bubble-card|mini-graph|weather-forecast/.test(JSON.stringify(light.views[0])));
+  const a = generateDashboard(config("mi_smart_clock", "clock", { pages: allPages }), hass);
+  ok("config: it survives a JSON round trip", JSON.stringify(JSON.parse(JSON.stringify(a))) === JSON.stringify(a));
+  ok("config: every view has a path and a type or sections", a.views.every((v) => v.path && (v.type || v.sections)));
+  const clock = find(a.views[0], "custom:digital-clock")[0];
+  ok("config: clock uses the Mi profile", clock.firstLineLayout.fontSize === "9.5em" && clock.secondLineLayout.fontSize === "2.2em" && clock.padding === "17vh 0 0");
+  ok("config: all pages fit in five navbar buttons", nav(a.views[0]).routes.length === 5 && nav(a.views[0]).routes.some((r) => r.popup), String(nav(a.views[0]).routes.length));
+  ok("config: the navbar stays on the right at 762px (Navbar Card's default breakpoint is 768px)", nav(a.views[0]).desktop.position === "right" && nav(a.views[0]).desktop.min_width <= 762, String(nav(a.views[0]).desktop.min_width));
+  ok("config: the Echo navbars keep Navbar Card's default breakpoint", ["echo_show_5", "echo_show_8"].every((d) => nav(generateDashboard(config(d), hass, [])).desktop.min_width === undefined));
+  ok("config: camera video uses the 5:3 screen shape", JSON.stringify(a).includes('"aspect_ratio":"5:3"'));
+  ok("config: the short-screen climate pop-up is used", JSON.stringify(a).includes('"card_type":"climate"') && !find(a.views[0], "thermostat").length);
+  ok("config: a number is not offered as a graph, a sensor is", !canChooseDisplay({ entity: "number.volume" }, "mi_smart_clock", "controls") && displayOf({ entity: "sensor.temp" }, "mi_smart_clock", "controls") === "graph");
+  ok("config: the Echo Show 5 always shows a number as its value and can still graph a sensor; the Echo Show 8 can graph both", !canChooseDisplay({ entity: "number.volume" }, "echo_show_5", "controls") && displayOf({ entity: "number.volume", display: "graph" }, "echo_show_5", "controls") === "value" && canChooseDisplay({ entity: "sensor.temp" }, "echo_show_5", "controls") && displayOf({ entity: "sensor.temp" }, "echo_show_5", "controls") === "graph" && canChooseDisplay({ entity: "number.volume" }, "echo_show_8", "controls") && displayOf({ entity: "number.volume", display: "graph" }, "echo_show_8", "controls") === "graph");
+  ok("config: the {device} image placeholder uses the new key", JSON.stringify(generateDashboard({ ...config("mi_smart_clock"), background: "custom", custom_background: "/local/bg.{device}.webp" }, hass)).includes("/local/bg.mi_smart_clock.webp"));
+}
+
+// ---- Fit: draws the generated layout with stand-in cards in a frame of the target size ----
+const NAV_RESERVE = 100; // px the floating right navbar keeps free (assumed from Navbar Card's default desktop padding)
+const drawCard = (d, c) => {
+  const div = (css, text) => { const x = d.createElement("div"); x.style.cssText = css; if (text) x.textContent = text; return x; };
+  if (c.type === "grid" || c.type === "vertical-stack") {
+    const host = div("display:block;min-width:0"); const root = host.attachShadow({ mode: "open" });
+    const layout = c.type === "grid" ? `display:grid;grid-template-columns:repeat(${c.columns || 2},minmax(0,1fr));gap:var(--grid-card-gap,8px)` : "display:flex;flex-direction:column;gap:var(--stack-card-gap,8px)";
+    root.innerHTML = `<style>#root{${layout};min-width:0}\n${c.card_mod?.style || ""}</style><div id="root"></div>`;
+    c.cards.forEach((x) => root.getElementById("root").appendChild(drawCard(d, x)));
+    return host;
+  }
+  if (c.type === "custom:digital-clock") {
+    const b = div(`padding:${c.padding};text-align:center;min-width:0`);
+    for (const [l, t] of [[c.firstLineLayout, "23:59"], [c.secondLineLayout, "Wednesday 30 September"]]) b.appendChild(div(`font-size:${l.fontSize};line-height:${l.lineHeight};white-space:nowrap`, t)).dataset.text = "1";
+    return b;
+  }
+  if (c.type === "custom:mushroom-chips-card") { const h = /--chip-height: ([^ ]+)/.exec(c.card_mod.style)[1]; const x = div(`height:${h};line-height:${h};text-align:center;white-space:nowrap;font-size:14px`, "Partly cloudy 22 °C"); x.dataset.text = "1"; return x; }
+  const rows = c.rows || c.grid_options?.rows || 4;
+  return div(`height:calc(${rows} * var(--row-height,6vh) + ${rows - 1} * var(--row-gap,3vh));background:#0003;border-radius:3vh;min-width:0`);
+};
+const drawView = async (view, w, h) => {
+  const f = document.createElement("iframe"); f.style.cssText = `width:${w}px;height:${h}px;border:0;display:block;margin-top:8px`; f.srcdoc = "<!doctype html><html><body></body></html>";
+  await new Promise((r) => { f.onload = r; document.getElementById("stage").appendChild(f); });
+  const d = f.contentDocument;
+  d.head.innerHTML = `<style>html,body{margin:0;height:100%;overflow:hidden;font:16px Roboto,Arial,sans-serif;color:#fff;background:${typeof view.background === "string" ? view.background : "#333"}}#main{box-sizing:border-box;width:100vw;height:100vh;padding-right:${NAV_RESERVE}px}#nav{position:fixed;right:8px;top:50%;transform:translateY(-50%);width:60px;display:flex;flex-direction:column;gap:10px;padding:8px;box-sizing:border-box;width:76px;background:#0005;border-radius:3vh}#nav i{height:60px;display:block;background:#fff3;border-radius:50%}</style>`;
+  const main = d.createElement("div"); main.id = "main"; d.body.appendChild(main);
+  const root = view.sections ? { type: "vertical-stack", cards: view.sections[0].cards } : view.cards[0];
+  // the navbar floats and the pop-up stays closed, so neither takes space in the page (the navbar is drawn and measured below)
+  const overlay = (c) => c.type === "custom:navbar-card" || c.card_type === "pop-up" || (c.type === "vertical-stack" && c.cards.every(overlay));
+  main.appendChild(drawCard(d, { ...root, cards: root.cards.filter((c) => !overlay(c)) }));
+  const n = nav(view); const bar = d.createElement("div"); bar.id = "nav"; n.routes.forEach(() => bar.appendChild(d.createElement("i"))); d.body.appendChild(bar);
+  await d.fonts?.ready;
+  return { f, d, bar };
+};
+const walk = (r, a = []) => { for (const e of r.querySelectorAll("*")) { if (!["STYLE", "HEAD", "TITLE"].includes(e.tagName)) a.push(e); if (e.shadowRoot) walk(e.shadowRoot, a); } return a; };
+const fits = ({ d, bar }, w, h) => {
+  const bad = [], navL = bar.getBoundingClientRect().left;
+  const b = bar.getBoundingClientRect(); if (b.top < 0 || b.bottom > h || b.right > w) bad.push("navbar outside screen");
+  for (const e of walk(d.body)) {
+    if (bar.contains(e) || e.id === "main") continue;
+    const r = e.getBoundingClientRect(); if (!r.width || !r.height) continue;
+    if (r.left < -0.5 || r.top < -0.5 || r.right > navL + 0.5 || r.bottom > h + 0.5) bad.push(`${e.tagName} ${Math.round(r.left)},${Math.round(r.top)}-${Math.round(r.right)},${Math.round(r.bottom)}`);
+    if (e.dataset.text && e.scrollWidth > e.clientWidth + 1) bad.push("text clipped: " + e.textContent);
+  }
+  if (d.documentElement.scrollWidth > w || d.documentElement.scrollHeight > h) bad.push("page scrolls");
+  return bad;
+};
+for (const [w, h, name] of [[762, 457, "full screen"], [762, 409, "with Android status and nav bars"]]) {
+  for (const layout of ["clock", "controls", "controls3", "controls4"]) {
+    const dash = generateDashboard(config("mi_smart_clock", layout, { pages: allPages }), hass, []); // [] = all required cards installed
+    const v = await drawView(dash.views[0], w, h); const bad = fits(v, w, h);
+    ok(`fit ${w}x${h} (${name}): ${layout} has no overflow and clears the navbar`, !bad.length, bad.slice(0, 4).join("; "));
+    if (!(w === 762 && h === 457 && layout === "clock")) v.f.remove(); else v.f.id = "preview";
+  }
+}
+out.textContent = res.join("\n") + `\n\n${res.filter((r) => r.startsWith("PASS")).length} passed, ${res.filter((r) => r.startsWith("FAIL")).length} failed`;
+window.__done = true;
+</script>

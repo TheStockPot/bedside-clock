@@ -2,7 +2,7 @@
 
 # The Stock Pot's Echo Dashboard
 
-A configurable Home Assistant dashboard strategy for **Echo Show 5** and **Echo Show 8** bedside and kitchen
+A configurable Home Assistant dashboard strategy for **Echo Show 5**, **Echo Show 8** and **Xiaomi Mi Smart Clock** bedside and kitchen
 displays. No integration needed: it works like the Energy dashboard, with a built-in setup wizard.
 
 ## Pages (turn on the ones you want)
@@ -57,6 +57,10 @@ strategy:
 4. Reload. The setup wizard appears: pick your display, background and pages, then **Save and reload**.
    Reopen it any time at `/<your-dashboard>/setup`.
 
+## Xiaomi Mi Smart Clock
+
+The Mi Smart Clock profile targets the X04G (800 x 480) running LineageOS 20 with Kiosk Satellite. At Android density 168 its viewport is 762 x 457. It has 1 GB of RAM, so the Clock layout is the lightest choice for Home. If the Home Assistant header stays visible, turn on the HA kiosk mode switch that Kiosk Satellite exposes.
+
 ## Required cards (install via the Marketplace; only those for the pages you enable are needed)
 Each link opens the card in your own Home Assistant's Marketplace (HACS) through My Home Assistant.
 
@@ -65,7 +69,7 @@ Each link opens the card in your own Home Assistant's Marketplace (HACS) through
 - Baby monitor / Cameras: [Advanced Camera Card](https://my.home-assistant.io/redirect/hacs_repository/?owner=dermotduffy&repository=advanced-camera-card&category=plugin)
 - Timer: [Simple Timer Card](https://my.home-assistant.io/redirect/hacs_repository/?owner=eyalgal&repository=simple-timer-card&category=plugin)
 - Calendar: [Calendar Card Pro](https://my.home-assistant.io/redirect/hacs_repository/?owner=alexpfau&repository=calendar-card-pro&category=plugin)
-- Optional: kiosk-mode (hides the Home Assistant header, on small screens like the Echo only) and hass-swipe-navigation (swipe between pages)
+- Optional: kiosk-mode (hides the Home Assistant header, on small screens only) and hass-swipe-navigation (swipe between pages)
 
 The wizard's first step lists what is installed and what is missing.
 
@@ -83,7 +87,7 @@ The wizard asks whether you use Kiosk Satellite, then lets you choose its device
 
 ![Kiosk Satellite step of the setup wizard](images/wizard-kiosk-satellite.png)
 
-If you use the Kiosk Satellite app on your Echo, the wizard asks you to choose its device and finds its Calendar and camera view entities from it. The Calendar,
+If you use the Kiosk Satellite app on your device, the wizard asks you to choose its device and finds its Calendar and camera view entities from it. The Calendar,
 Cameras and Timer pages can then use Kiosk Satellite's built-in views instead of dashboard pages, chosen per page.
 Their navbar buttons run the matching action: press the camera view's Show button, pick a view on the Calendar view select,
 or open ks://timers. This needs Expose kiosk entities turned on in the app, and the navbar shown.
