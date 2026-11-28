@@ -7,7 +7,7 @@
  * reachable at /<dashboard>/setup afterwards.
  */
 
-const VERSION = "0.2.2";
+const VERSION = "0.2.3";
 const STRATEGY_TYPE = "custom:bedside-clock";
 
 /* ------------------------------------------------------------------ */
@@ -66,6 +66,7 @@ const DEFAULT_CONFIG = {
   palette_override: {}, // colours the user changed from the automatically picked palette: { accent, accent2, track, ink, text } (#RRGGBB)
   show_labels: true,
   time_format: "auto", // the clock: "auto" (follows the Home Assistant user's profile), "12" or "24"
+  date_format: "auto", // the date under the clock: "auto" (follows the Home Assistant user's profile), "month_first" or "month_last"
   page_order: [], // the order of the pages in the navbar, the wizard and when swiping; pages missing from it follow in the default order
   dashboard_path: "",
   kiosk_satellite: { enabled: false, device: "", entity: "" }, // Kiosk Satellite app: Calendar, Cameras and Timer can use its built-in views (device: its device id; entity: an entity of it, from older setups)
@@ -183,6 +184,27 @@ export function uses12Hour(cfg, hass) {
   }
 }
 
+export const DATE_FORMATS = [
+  ["auto", "Automatic (from your Home Assistant profile)"],
+  ["month_first", "Month first (Saturday November 21)"],
+  ["month_last", "Month last (Saturday 21 November)"]
+];
+
+export function usesMonthFirst(cfg, hass) {
+  if (cfg.date_format === "month_first") return true;
+  if (cfg.date_format === "month_last") return false;
+  const loc = hass && hass.locale;
+  if (loc && (loc.date_format === "MDY" || loc.date_format === "YMD")) return true;
+  if (loc && loc.date_format === "DMY") return false;
+  try {
+    const lang = loc && loc.date_format === "language" ? loc.language : undefined;
+    const types = new Intl.DateTimeFormat(lang, { month: "long", day: "numeric" }).formatToParts(new Date(2026, 0, 15)).map((p) => p.type);
+    return types.indexOf("month") < types.indexOf("day");
+  } catch (e) {
+    return false;
+  }
+}
+
 export const HOME_LAYOUTS = ["clock", "controls", "controls3", "controls4"]; // the kinds of home screen
 
 export function normaliseConfig(raw) {
@@ -193,6 +215,8 @@ export function normaliseConfig(raw) {
   if (!BACKGROUNDS[cfg.background]) cfg.background = "earth";
   if (!TIME_FORMATS.some(([v]) => v === String(cfg.time_format))) cfg.time_format = "auto";
   cfg.time_format = String(cfg.time_format);
+  if (!DATE_FORMATS.some(([v]) => v === String(cfg.date_format))) cfg.date_format = "auto";
+  cfg.date_format = String(cfg.date_format);
   // the home screens: older configs have one (layout + quick_buttons). Each layout appears once; layout and quick_buttons mirror the first screen.
   const h = cfg.pages.home;
   const seen = new Set();
@@ -521,7 +545,7 @@ function homeClockStack(cfg, dev, hass, { vh = false, left = false } = {}) {
       background: "transparent",
       additionalCSS: "border:none;box-shadow:none",
       firstLineFormat: uses12Hour(cfg, hass) ? "h:mm" : "H:mm", // no AM/PM: it would make the big clock too wide
-      secondLineFormat: "cccc d LLLL",
+      secondLineFormat: usesMonthFirst(cfg, hass) ? "cccc LLLL d" : "cccc d LLLL",
       firstLineLayout: { textAlign: left ? "left" : "center", lineHeight: vh ? "1em" : dev.clock.lineHeight, fontSize: vh ? "24vh" : dev.clock.size, fontWeight: "normal" },
       secondLineLayout: { textAlign: left ? "left" : "center", lineHeight: vh ? "1.5em" : dev.clock.dateLineHeight, fontSize: vh ? "5vh" : dev.clock.dateSize, fontWeight: "normal" },
     },
@@ -1750,6 +1774,7 @@ const LABELS = {
   hide: "Hide the navbar and swipe left or right between pages instead",
   weather: "Weather entity (optional)",
   time_format: "Clock",
+  date_format: "Date",
   camera: "Nursery camera",
   entity: "Entity",
   title: "Title (optional)",
@@ -2305,6 +2330,9 @@ class BedsideClockEditor extends HTMLElement {
     clockBox.style.marginBottom = "16px";
     this._form(clockBox, [{ name: "time_format", selector: { select: { mode: "dropdown", options: TIME_FORMATS.map(([value, label]) => ({ value, label })) } } }], this._config, (v) =>
       this._change((c) => (c.time_format = v.time_format || "auto"))
+    );
+    this._form(clockBox, [{ name: "date_format", selector: { select: { mode: "dropdown", options: DATE_FORMATS.map(([value, label]) => ({ value, label })) } } }], this._config, (v) =>
+      this._change((c) => (c.date_format = v.date_format || "auto"))
     );
     this._form(w, [{ name: "weather", selector: { entity: { domain: "weather" } } }], h, (v) =>
       this._change((c) => (c.pages.home.weather = v.weather || ""))
